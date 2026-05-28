@@ -19,6 +19,14 @@ sourceSets.main.resources {
 }
 
 repositories {
+    maven {
+        name = "Modrinth"
+        url = "https://api.modrinth.com/maven"
+    }
+    maven {
+        name = "RyanHCode Maven"
+        url = "https://maven.ryanhcode.dev/releases"
+    }
 }
 
 base {
@@ -62,21 +70,8 @@ configurations {
 dependencies {
     implementation "net.neoforged:neoforge:${neo_version}"
 
-    def localSableCommonJar = rootProject.file("../sable-main/common/build/libs/sable-common-1.21.1-1.2.2.jar")
-    def localSableNeoForgeJar = rootProject.file("../sable-main/neoforge/build/libs/sable-neoforge-1.21.1-1.2.2.jar")
-    def localSableCompanionJar = rootProject.file("../sable-main/neoforge/build/generated/jarJar/META-INF/jarjar/sable-companion-common-1.21.1-1.6.0.jar")
-
-    if (localSableCommonJar.exists()) {
-        compileOnly files(localSableCommonJar)
-    }
-
-    if (localSableCompanionJar.exists()) {
-        compileOnly files(localSableCompanionJar)
-    }
-
-    if (localSableNeoForgeJar.exists()) {
-        localRuntime files(localSableNeoForgeJar)
-    }
+    implementation "maven.modrinth:sable:1.2.2+mc1.21.1-neoforge"
+    compileOnly "dev.ryanhcode.sable-companion:sable-companion-common-${minecraft_version}:1.6.0"
 }
 
 tasks.withType(ProcessResources).configureEach {

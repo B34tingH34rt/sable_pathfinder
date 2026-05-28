@@ -1,2 +1,12 @@
-# Auto detect text files and perform LF normalization
+# Automatiškai tvarkyti tekstinius failus
 * text=auto
+
+# Užfiksuoti specifinius failus kaip tekstą
+*.java text diff=java
+*.json text
+*.toml text
+
+# Užtikrinti, kad vaizdai ir garsai būtų traktuojami tik kaip binariniai (bin) failai
+*.png binary
+*.ogg binary
+*.jar binary

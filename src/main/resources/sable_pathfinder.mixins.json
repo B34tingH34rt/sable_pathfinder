@@ -1,0 +1,18 @@
+{
+  "required": true,
+  "package": "b34tingh34rt.sable_pathfinder.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "minVersion": "0.8",
+  "priority": 2000,
+  "mixins": [
+    "entity_pathfinding.GroundPathNavigationMixin",
+    "entity_pathfinding.PathMixin",
+    "entity_pathfinding.PathNavigationAccessor",
+    "entity_pathfinding.PathNavigationMixin",
+    "entity_pathfinding.PathNavigationRegionMixin",
+    "entity_pathfinding.ServerLevelPathDebugMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

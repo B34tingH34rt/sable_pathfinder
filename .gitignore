@@ -1,0 +1,23 @@
+# Gradle failai ir talpyklos (cache)
+.gradle/
+build/
+
+# IDE konfigūracijos (IntelliJ IDEA ir Eclipse)
+.idea/
+*.iml
+*.iws
+.settings/
+.classpath
+.project
+.factorypath
+.vscode/
+/bin/
+
+# Log failai ir paleidimo rezultatai
+/run/
+/runGame/
+*.log
+
+# Operacinės sistemos šiukšlės
+.DS_Store
+Thumbs.db

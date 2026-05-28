@@ -1,7 +1,7 @@
 package b34tingh34rt.sable_pathfinder.mixin.entity_pathfinding;
 
-import b34tingh34rt.sable_pathfinder.path.SablePathExtension;
 import b34tingh34rt.sable_pathfinder.debug.MobPathDebugState;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -54,7 +54,8 @@ public abstract class ServerLevelPathDebugMixin {
                 final int maxNodes = Math.min(path.getNodeCount(), 64);
 
                 for (int i = path.getNextNodeIndex(); i < maxNodes; i++) {
-                    final Vec3 current = ((SablePathExtension) path).sablePathfinder$getProjectedNodeCenter(level, i).add(0.0, 0.05, 0.0);
+                    final BlockPos nodePos = path.getNode(i).asBlockPos();
+                    final Vec3 current = Vec3.atCenterOf(nodePos).add(0.0, 0.05, 0.0);
                     this.sablePathfinder$drawSegment(level, previous, current, particle);
                     previous = current;
                 }

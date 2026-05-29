@@ -1,5 +1,6 @@
 package b34tingh34rt.sable_pathfinder.mixin.entity_pathfinding;
 
+import b34tingh34rt.sable_pathfinder.mixin.entity_pathfinding.PathAccessor;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.pathfinder.Node;
 import net.minecraft.world.level.pathfinder.Path;

@@ -1,7 +1,6 @@
 package b34tingh34rt.sable_pathfinder;
 
 import b34tingh34rt.sable_pathfinder.debug.MobPathDebugState;
-import b34tingh34rt.sable_pathfinder.debug.PathfinderDebugState;
 import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.logging.LogUtils;
 import net.minecraft.commands.Commands;
@@ -39,11 +38,6 @@ public class SablePathfinder {
                                     MobPathDebugState.setEnabled(enabled);
                                     ctx.getSource().sendSuccess(() -> Component.translatable("commands.sable_pathfinder.debug_paths", enabled), true);
                                     return 1;
-                                })))
-                .then(Commands.literal("last_path_failure")
-                        .executes(ctx -> {
-                            ctx.getSource().sendSuccess(() -> Component.literal(PathfinderDebugState.getLastFailure()), false);
-                            return 1;
-                        })));
+                                }))));
     }
 }

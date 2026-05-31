@@ -55,7 +55,7 @@ public abstract class PathNavigationTargetDebugMixin {
         final SubLevel mobTrackingSubLevel = Sable.HELPER.getTrackingSubLevel(this.mob);
         final SubLevel targetTrackingSubLevel = Sable.HELPER.getTrackingSubLevel(entity);
         final boolean isActiveTarget = entity == this.mob.getTarget();
-        final boolean shouldUseWorldTarget = isActiveTarget;
+        final boolean shouldUseWorldTarget = mobTrackingSubLevel == null && isActiveTarget;
 
         if (MobPathDebugState.isEnabled()) {
             this.sablePathfinder$sendDebugMessage(

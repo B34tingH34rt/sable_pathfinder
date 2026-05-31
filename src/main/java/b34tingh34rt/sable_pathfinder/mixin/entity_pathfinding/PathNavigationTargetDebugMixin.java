@@ -76,7 +76,8 @@ public abstract class PathNavigationTargetDebugMixin {
 
         final BlockPos worldTarget = entity.blockPosition();
         final Path correctedPath = this.createPath(Set.of(worldTarget), 16, true, 1);
-        final boolean moved = correctedPath != null && this.moveTo(correctedPath, speed);
+        final boolean hasUsefulPath = correctedPath != null && (correctedPath.canReach() || correctedPath.getNodeCount() > 1);
+        final boolean moved = hasUsefulPath && this.moveTo(correctedPath, speed);
 
         if (MobPathDebugState.isEnabled()) {
             this.sablePathfinder$sendDebugMessage(
@@ -92,7 +93,8 @@ public abstract class PathNavigationTargetDebugMixin {
                                     : "target " + correctedPath.getTarget().toShortString() +
                                     ", end " + this.sablePathfinder$formatBlockPos(correctedPath.getEndNode() == null ? null : correctedPath.getEndNode().asBlockPos()) +
                                     ", can reach " + correctedPath.canReach() +
-                                    ", nodes " + correctedPath.getNodeCount()) +
+                                    ", nodes " + correctedPath.getNodeCount() +
+                                    (hasUsefulPath ? "" : ", rejected one-node fallback")) +
                             ", moved " + moved
             );
         }
@@ -116,9 +118,10 @@ public abstract class PathNavigationTargetDebugMixin {
         );
     }
 
-    @Inject(method = "createPath(Lnet/minecraft/core/BlockPos;I)Lnet/minecraft/world/level/pathfinder/Path;", at = @At("HEAD"), require = 0)
+    @Inject(method = "createPath(Lnet/minecraft/core/BlockPos;I)Lnet/minecraft/world/level/pathfinder/Path;", at = @At("HEAD"), cancellable = true, require = 0)
     private void sablePathfinder$debugCreatePathBlockSource(final BlockPos pos, final int accuracy, final CallbackInfoReturnable<Path> cir) {
         this.sablePathfinder$debugBlockSource("createPath(block, accuracy)", pos, accuracy, null);
+        this.sablePathfinder$correctActiveTargetLocalBlock(pos, accuracy, cir);
     }
 
     @Inject(method = "createPath(Lnet/minecraft/core/BlockPos;II)Lnet/minecraft/world/level/pathfinder/Path;", at = @At("HEAD"), require = 0)
@@ -264,6 +267,53 @@ public abstract class PathNavigationTargetDebugMixin {
 
         return " | active target " + this.sablePathfinder$describeAnyEntity(activeTarget) +
                 this.sablePathfinder$describeEntitySubLevelState(activeTarget);
+    }
+
+    @Unique
+    private void sablePathfinder$correctActiveTargetLocalBlock(final BlockPos pos, final int accuracy, final CallbackInfoReturnable<Path> cir) {
+        if (this.level.isClientSide || Sable.HELPER.getTrackingSubLevel(this.mob) != null) {
+            return;
+        }
+
+        final LivingEntity activeTarget = this.mob.getTarget();
+        if (activeTarget == null) {
+            return;
+        }
+
+        final SubLevel containingSubLevel = Sable.HELPER.getContaining(this.level, pos);
+        final SubLevel targetTrackingSubLevel = Sable.HELPER.getTrackingSubLevel(activeTarget);
+        if (containingSubLevel == null || containingSubLevel != targetTrackingSubLevel) {
+            return;
+        }
+
+        final BlockPos projectedWorldBlock = BlockPos.containing(containingSubLevel.logicalPose().transformPosition(pos.getCenter()));
+        if (projectedWorldBlock.distManhattan(activeTarget.blockPosition()) > 2) {
+            return;
+        }
+
+        final BlockPos worldTarget = activeTarget.blockPosition();
+        final Path correctedPath = this.createPath(Set.of(worldTarget), 16, true, accuracy);
+        final boolean usefulPath = correctedPath != null && (correctedPath.canReach() || correctedPath.getNodeCount() > 1);
+
+        if (MobPathDebugState.isEnabled()) {
+            this.sablePathfinder$sendDebugMessage(
+                    "[Sable Pathfinder] Corrected local block path source for " +
+                            this.sablePathfinder$describeEntity(this.mob) +
+                            ": received target-local block " + pos.toShortString() +
+                            " projecting to " + projectedWorldBlock.toShortString() +
+                            ", using active target world block " + worldTarget.toShortString() +
+                            " | path " +
+                            (correctedPath == null
+                                    ? "none"
+                                    : "target " + correctedPath.getTarget().toShortString() +
+                                    ", end " + this.sablePathfinder$formatBlockPos(correctedPath.getEndNode() == null ? null : correctedPath.getEndNode().asBlockPos()) +
+                                    ", can reach " + correctedPath.canReach() +
+                                    ", nodes " + correctedPath.getNodeCount() +
+                                    (usefulPath ? "" : ", rejected one-node fallback"))
+            );
+        }
+
+        cir.setReturnValue(usefulPath ? correctedPath : null);
     }
 
     @Unique

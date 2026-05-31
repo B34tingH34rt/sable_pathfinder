@@ -5,6 +5,8 @@
   "minVersion": "0.8",
   "priority": 2000,
   "mixins": [
+    "entity_pathfinding.GroundPathNavigationTargetMixin",
+    "entity_pathfinding.PathNavigationMobAccessor",
     "entity_pathfinding.PathNavigationTargetDebugMixin",
     "entity_pathfinding.PathNavigationRegionMixin",
     "entity_pathfinding.ServerLevelPathDebugMixin"

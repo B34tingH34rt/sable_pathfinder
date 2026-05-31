@@ -1,6 +1,7 @@
 package b34tingh34rt.sable_pathfinder.mixin.entity_pathfinding;
 
 import b34tingh34rt.sable_pathfinder.debug.MobPathDebugState;
+import b34tingh34rt.sable_pathfinder.debug.MobPathDebugState.Category;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
@@ -33,7 +34,7 @@ public abstract class GroundPathNavigationTargetMixin extends PathNavigation {
         final boolean isActiveTarget = activeTarget != null
                 && (entity == activeTarget || entity.getId() == activeTarget.getId() || entity.getUUID().equals(activeTarget.getUUID()));
 
-        if (MobPathDebugState.isEnabled()) {
+        if (MobPathDebugState.isEnabled(Category.SOURCE)) {
             this.level.players().forEach(player -> player.sendSystemMessage(Component.literal(
                     "[Sable Pathfinder] GroundPathNavigation entity probe seen for " +
                             mob.getName().getString() +
@@ -51,7 +52,7 @@ public abstract class GroundPathNavigationTargetMixin extends PathNavigation {
         final Path correctedPath = super.createPath(Set.of(worldTarget), 16, true, accuracy);
         final boolean usefulPath = correctedPath != null && (correctedPath.canReach() || correctedPath.getNodeCount() > 1);
 
-        if (MobPathDebugState.isEnabled()) {
+        if (MobPathDebugState.isEnabled(Category.CORRECTION)) {
             final String pathText = correctedPath == null
                     ? "none"
                     : "target " + correctedPath.getTarget().toShortString() +

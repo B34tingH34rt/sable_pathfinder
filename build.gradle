@@ -33,6 +33,10 @@ base {
     archivesName = mod_id
 }
 
+tasks.named('jar', Jar).configure {
+    outputs.upToDateWhen { false }
+}
+
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
 runs {

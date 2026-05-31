@@ -1,6 +1,9 @@
 package b34tingh34rt.sable_pathfinder.mixin.entity_pathfinding;
 
 import b34tingh34rt.sable_pathfinder.debug.MobPathDebugState;
+import b34tingh34rt.sable_pathfinder.debug.MobPathDebugState.Category;
+import b34tingh34rt.sable_pathfinder.debug.PathNodeDebugState;
+import b34tingh34rt.sable_pathfinder.debug.PathNodeSource;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
@@ -31,6 +34,8 @@ public abstract class PathNavigationTargetDebugMixin {
     private static final int SABLE_PATHFINDER$MAX_TARGETS_IN_MESSAGE = 8;
     @Unique
     private static final int SABLE_PATHFINDER$MAX_PATH_NODES_IN_MESSAGE = 10;
+    @Unique
+    private static final int SABLE_PATHFINDER$MAX_REGION_EVIDENCE_NODES = 8;
 
     @Shadow
     @Final
@@ -39,6 +44,9 @@ public abstract class PathNavigationTargetDebugMixin {
     @Shadow
     @Final
     protected Level level;
+
+    @Shadow
+    protected Path path;
 
     @Shadow
     public abstract boolean moveTo(final Path pathentity, final double speed);
@@ -57,7 +65,7 @@ public abstract class PathNavigationTargetDebugMixin {
         final boolean isActiveTarget = entity == this.mob.getTarget();
         final boolean shouldUseWorldTarget = mobTrackingSubLevel == null && isActiveTarget;
 
-        if (MobPathDebugState.isEnabled()) {
+        if (MobPathDebugState.isEnabled(Category.SOURCE)) {
             this.sablePathfinder$sendDebugMessage(
                     "[Sable Pathfinder] Path source moveTo(entity): " +
                             this.sablePathfinder$describeEntity(this.mob) +
@@ -75,11 +83,20 @@ public abstract class PathNavigationTargetDebugMixin {
         }
 
         final BlockPos worldTarget = entity.blockPosition();
+        final boolean forceFreshPathForRegionDebug = MobPathDebugState.isEnabled(Category.REGION);
+        final Path previousPath = this.path;
+        if (forceFreshPathForRegionDebug) {
+            this.path = null;
+        }
+
         final Path correctedPath = this.createPath(Set.of(worldTarget), 16, true, 1);
         final boolean hasUsefulPath = correctedPath != null && (correctedPath.canReach() || correctedPath.getNodeCount() > 1);
         final boolean moved = hasUsefulPath && this.moveTo(correctedPath, speed);
+        if (!moved && forceFreshPathForRegionDebug) {
+            this.path = previousPath;
+        }
 
-        if (MobPathDebugState.isEnabled()) {
+        if (MobPathDebugState.isEnabled(Category.CORRECTION)) {
             this.sablePathfinder$sendDebugMessage(
                     "[Sable Pathfinder] Corrected moveTo(entity) for " +
                             this.sablePathfinder$describeEntity(this.mob) +
@@ -95,7 +112,8 @@ public abstract class PathNavigationTargetDebugMixin {
                                     ", can reach " + correctedPath.canReach() +
                                     ", nodes " + correctedPath.getNodeCount() +
                                     (hasUsefulPath ? "" : ", rejected one-node fallback")) +
-                            ", moved " + moved
+                            ", moved " + moved +
+                            (forceFreshPathForRegionDebug ? ", forced fresh path for region debug" : "")
             );
         }
 
@@ -104,7 +122,7 @@ public abstract class PathNavigationTargetDebugMixin {
 
     @Inject(method = "createPath(Lnet/minecraft/world/entity/Entity;I)Lnet/minecraft/world/level/pathfinder/Path;", at = @At("HEAD"), require = 0)
     private void sablePathfinder$debugCreatePathEntitySource(final Entity entity, final int accuracy, final CallbackInfoReturnable<Path> cir) {
-        if (!MobPathDebugState.isEnabled() || this.level.isClientSide) {
+        if (!MobPathDebugState.isEnabled(Category.SOURCE) || this.level.isClientSide) {
             return;
         }
 
@@ -132,7 +150,7 @@ public abstract class PathNavigationTargetDebugMixin {
 
     @Inject(method = "createPath(Ljava/util/Set;I)Lnet/minecraft/world/level/pathfinder/Path;", at = @At("HEAD"), require = 0)
     private void sablePathfinder$debugCreatePathSetSource(final Set<BlockPos> positions, final int distance, final CallbackInfoReturnable<Path> cir) {
-        if (!MobPathDebugState.isEnabled() || this.level.isClientSide) {
+        if (!MobPathDebugState.isEnabled(Category.SOURCE) || this.level.isClientSide) {
             return;
         }
 
@@ -147,7 +165,7 @@ public abstract class PathNavigationTargetDebugMixin {
 
     @Inject(method = "createPath(Ljava/util/stream/Stream;I)Lnet/minecraft/world/level/pathfinder/Path;", at = @At("HEAD"), require = 0)
     private void sablePathfinder$debugCreatePathStreamSource(final Stream<BlockPos> targets, final int accuracy, final CallbackInfoReturnable<Path> cir) {
-        if (!MobPathDebugState.isEnabled() || this.level.isClientSide) {
+        if (!MobPathDebugState.isEnabled(Category.SOURCE) || this.level.isClientSide) {
             return;
         }
 
@@ -163,7 +181,9 @@ public abstract class PathNavigationTargetDebugMixin {
     @Inject(method = "createPath(Ljava/util/Set;IZIF)Lnet/minecraft/world/level/pathfinder/Path;", at = @At("HEAD"), require = 0)
     private void sablePathfinder$debugPathTargets(final Set<BlockPos> targets, final int regionOffset, final boolean offsetUpward,
                                                   final int accuracy, final float followRange, final CallbackInfoReturnable<Path> cir) {
-        if (!MobPathDebugState.isEnabled() || this.level.isClientSide) {
+        PathNodeDebugState.beginCapture();
+
+        if ((!MobPathDebugState.isEnabled(Category.TARGETS) && !MobPathDebugState.isEnabled(Category.REMAP)) || this.level.isClientSide) {
             return;
         }
 
@@ -185,25 +205,46 @@ public abstract class PathNavigationTargetDebugMixin {
                 ", search offset " + regionOffset +
                 (offsetUpward ? ", starts one block higher" : "");
 
-        this.level.players().forEach(player -> player.sendSystemMessage(Component.literal(message)));
-        this.sablePathfinder$sendDebugMessage(this.sablePathfinder$describeSableRemap(targets, offsetUpward));
+        if (MobPathDebugState.isEnabled(Category.TARGETS)) {
+            this.level.players().forEach(player -> player.sendSystemMessage(Component.literal(message)));
+        }
+        if (MobPathDebugState.isEnabled(Category.REMAP)) {
+            this.sablePathfinder$sendDebugMessage(this.sablePathfinder$describeSableRemap(targets, offsetUpward));
+        }
     }
 
     @Inject(method = "createPath(Ljava/util/Set;IZIF)Lnet/minecraft/world/level/pathfinder/Path;", at = @At("RETURN"), require = 0)
     private void sablePathfinder$debugActualPath(final Set<BlockPos> targets, final int regionOffset, final boolean offsetUpward,
                                                  final int accuracy, final float followRange, final CallbackInfoReturnable<Path> cir) {
-        if (!MobPathDebugState.isEnabled() || this.level.isClientSide) {
+        PathNodeDebugState.tagPath(cir.getReturnValue());
+
+        if (this.level.isClientSide) {
+            return;
+        }
+
+        final boolean showActualPath = MobPathDebugState.isEnabled(Category.ACTUAL_PATH);
+        final boolean showRegion = MobPathDebugState.isEnabled(Category.REGION);
+        if (!showActualPath && !showRegion) {
             return;
         }
 
         final Path path = cir.getReturnValue();
         if (path == null) {
-            this.sablePathfinder$sendDebugMessage(
-                    "[Sable Pathfinder] " +
-                            this.sablePathfinder$describeEntity(this.mob) +
-                            " got no path for requested position(s): " +
-                            this.sablePathfinder$formatTargets(targets)
-            );
+            if (showActualPath) {
+                this.sablePathfinder$sendDebugMessage(
+                        "[Sable Pathfinder] " +
+                                this.sablePathfinder$describeEntity(this.mob) +
+                                " got no path for requested position(s): " +
+                                this.sablePathfinder$formatTargets(targets)
+                );
+            }
+            if (showRegion) {
+                this.sablePathfinder$sendDebugMessage(
+                        "[Sable Pathfinder] Region capture for " +
+                                this.sablePathfinder$describeEntity(this.mob) +
+                                ": " + PathNodeDebugState.describePathRegionEvidence(null, SABLE_PATHFINDER$MAX_REGION_EVIDENCE_NODES)
+                );
+            }
             return;
         }
 
@@ -211,18 +252,28 @@ public abstract class PathNavigationTargetDebugMixin {
         final BlockPos endNode = path.getEndNode() == null ? null : path.getEndNode().asBlockPos();
         final String activeTargetComparison = this.sablePathfinder$formatActiveTargetComparison(pathTarget, endNode);
 
-        final String message = "[Sable Pathfinder] Actual path for " +
-                this.sablePathfinder$describeEntity(this.mob) +
-                ": path target " + this.sablePathfinder$formatBlockPos(pathTarget) +
-                ", end node " + this.sablePathfinder$formatBlockPos(endNode) +
-                ", can reach " + path.canReach() +
-                ", distance left " + this.sablePathfinder$formatNumber(path.getDistToTarget()) +
-                ", nodes " + path.getNodeCount() +
-                ", next index " + path.getNextNodeIndex() +
-                activeTargetComparison +
-                " | node preview: " + this.sablePathfinder$formatPathNodes(path);
+        if (showActualPath) {
+            final String message = "[Sable Pathfinder] Actual path for " +
+                    this.sablePathfinder$describeEntity(this.mob) +
+                    ": path target " + this.sablePathfinder$formatBlockPos(pathTarget) +
+                    ", end node " + this.sablePathfinder$formatBlockPos(endNode) +
+                    ", can reach " + path.canReach() +
+                    ", distance left " + this.sablePathfinder$formatNumber(path.getDistToTarget()) +
+                    ", nodes " + path.getNodeCount() +
+                    ", next index " + path.getNextNodeIndex() +
+                    activeTargetComparison +
+                    " | node preview: " + this.sablePathfinder$formatPathNodes(path);
 
-        this.sablePathfinder$sendDebugMessage(message);
+            this.sablePathfinder$sendDebugMessage(message);
+        }
+
+        if (showRegion) {
+            this.sablePathfinder$sendDebugMessage(
+                    "[Sable Pathfinder] Region capture for " +
+                            this.sablePathfinder$describeEntity(this.mob) +
+                            ": " + PathNodeDebugState.describePathRegionEvidence(path, SABLE_PATHFINDER$MAX_REGION_EVIDENCE_NODES)
+            );
+        }
     }
 
     @Unique
@@ -243,7 +294,7 @@ public abstract class PathNavigationTargetDebugMixin {
 
     @Unique
     private void sablePathfinder$debugBlockSource(final String source, final BlockPos pos, final int accuracy, final Integer regionOffset) {
-        if (!MobPathDebugState.isEnabled() || this.level.isClientSide) {
+        if (!MobPathDebugState.isEnabled(Category.SOURCE) || this.level.isClientSide) {
             return;
         }
 
@@ -295,7 +346,7 @@ public abstract class PathNavigationTargetDebugMixin {
         final Path correctedPath = this.createPath(Set.of(worldTarget), 16, true, accuracy);
         final boolean usefulPath = correctedPath != null && (correctedPath.canReach() || correctedPath.getNodeCount() > 1);
 
-        if (MobPathDebugState.isEnabled()) {
+        if (MobPathDebugState.isEnabled(Category.CORRECTION)) {
             this.sablePathfinder$sendDebugMessage(
                     "[Sable Pathfinder] Corrected local block path source for " +
                             this.sablePathfinder$describeEntity(this.mob) +
@@ -550,7 +601,9 @@ public abstract class PathNavigationTargetDebugMixin {
             if (i == path.getNextNodeIndex()) {
                 builder.append("[next] ");
             }
-            builder.append(path.getNode(i).asBlockPos().toShortString());
+            builder.append(path.getNode(i).asBlockPos().toShortString())
+                    .append(" ")
+                    .append(this.sablePathfinder$formatNodeSource(path.getNode(i)));
         }
 
         final int hidden = path.getNodeCount() - shown;
@@ -559,6 +612,12 @@ public abstract class PathNavigationTargetDebugMixin {
         }
 
         return builder.toString();
+    }
+
+    @Unique
+    private String sablePathfinder$formatNodeSource(final net.minecraft.world.level.pathfinder.Node node) {
+        final PathNodeSource source = PathNodeDebugState.sourceFor(node);
+        return source == null ? "(world/unknown)" : "(" + source.shortLabel() + ")";
     }
 
     @Unique

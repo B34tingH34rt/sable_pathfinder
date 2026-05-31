@@ -1,7 +1,7 @@
 package b34tingh34rt.sable_pathfinder.mixin.entity_pathfinding;
 
-import net.minecraft.network.chat.Component;
-
+import b34tingh34rt.sable_pathfinder.debug.PathNodeDebugState;
+import b34tingh34rt.sable_pathfinder.debug.PathNodeSource;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
@@ -25,9 +25,12 @@ public abstract class PathNavigationRegionMixin {
 
     @Inject(method = "getBlockState", at = @At("RETURN"), cancellable = true)
     private void sablePathfinder$getBlockState(final BlockPos blockPos, final CallbackInfoReturnable<BlockState> cir) {
+        PathNodeDebugState.recordProbe("PathNavigationRegion#getBlockState", blockPos, this.level.getClass().getName());
+
         final BlockState existing = cir.getReturnValue();
 
         if (!existing.isAir()) {
+            PathNodeDebugState.record(blockPos, PathNodeSource.world(PathNodeSource.Lookup.BLOCK, blockPos));
             return;
         }
 
@@ -35,7 +38,14 @@ public abstract class PathNavigationRegionMixin {
         final BlockState resolved = Sable.HELPER.runIncludingSubLevels(this.level, Vec3.atCenterOf(blockPos), false, localSubLevel,
                 (candidateSubLevel, candidatePos) -> {
                     final BlockState candidateState = this.level.getBlockState(candidatePos);
-                    return candidateState.isAir() ? null : candidateState;
+                    if (candidateState.isAir()) {
+                        return null;
+                    }
+
+                    PathNodeDebugState.record(blockPos, candidateSubLevel == null
+                            ? PathNodeSource.world(PathNodeSource.Lookup.BLOCK, candidatePos)
+                            : PathNodeSource.sable(PathNodeSource.Lookup.BLOCK, candidateSubLevel, candidatePos));
+                    return candidateState;
                 });
 
         if (resolved != null) {
@@ -45,9 +55,12 @@ public abstract class PathNavigationRegionMixin {
 
     @Inject(method = "getFluidState", at = @At("RETURN"), cancellable = true)
     private void sablePathfinder$getFluidState(final BlockPos blockPos, final CallbackInfoReturnable<FluidState> cir) {
+        PathNodeDebugState.recordProbe("PathNavigationRegion#getFluidState", blockPos, this.level.getClass().getName());
+
         final FluidState existing = cir.getReturnValue();
 
         if (!existing.isEmpty()) {
+            PathNodeDebugState.record(blockPos, PathNodeSource.world(PathNodeSource.Lookup.FLUID, blockPos));
             return;
         }
 
@@ -55,7 +68,14 @@ public abstract class PathNavigationRegionMixin {
         final FluidState resolved = Sable.HELPER.runIncludingSubLevels(this.level, Vec3.atCenterOf(blockPos), false, localSubLevel,
                 (candidateSubLevel, candidatePos) -> {
                     final FluidState candidateState = this.level.getFluidState(candidatePos);
-                    return candidateState.isEmpty() ? null : candidateState;
+                    if (candidateState.isEmpty()) {
+                        return null;
+                    }
+
+                    PathNodeDebugState.record(blockPos, candidateSubLevel == null
+                            ? PathNodeSource.world(PathNodeSource.Lookup.FLUID, candidatePos)
+                            : PathNodeSource.sable(PathNodeSource.Lookup.FLUID, candidateSubLevel, candidatePos));
+                    return candidateState;
                 });
 
         if (resolved != null) {

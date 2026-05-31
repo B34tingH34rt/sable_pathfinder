@@ -6,10 +6,18 @@
   "priority": 2000,
   "mixins": [
     "entity_pathfinding.GroundPathNavigationTargetMixin",
+    "entity_pathfinding.NodeEvaluatorProbeMixin",
+    "entity_pathfinding.PathFinderProbeMixin",
+    "entity_pathfinding.PathNodeMetadataMixin",
+    "entity_pathfinding.PathfindingContextMixin",
+    "entity_pathfinding.PathfindingContextPathTypeProbeMixin",
+    "entity_pathfinding.PathNavigationRegionAccessor",
     "entity_pathfinding.PathNavigationMobAccessor",
     "entity_pathfinding.PathNavigationTargetDebugMixin",
     "entity_pathfinding.PathNavigationRegionMixin",
-    "entity_pathfinding.ServerLevelPathDebugMixin"
+    "entity_pathfinding.ServerLevelPathDebugMixin",
+    "entity_pathfinding.TextDisplayAccessor",
+    "entity_pathfinding.WalkNodeEvaluatorProbeMixin"
   ],
   "injectors": {
     "defaultRequire": 1

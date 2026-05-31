@@ -1,5 +1,7 @@
 package b34tingh34rt.sable_pathfinder.mixin.entity_pathfinding;
 
+import net.minecraft.network.chat.Component;
+
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;

@@ -24,6 +24,7 @@ public class SablePathfinder {
     private static final SuggestionProvider<CommandSourceStack> DEBUG_CATEGORY_SUGGESTIONS = (context, builder) -> {
         builder.suggest("all");
         builder.suggest("pathing");
+        builder.suggest("analysis");
         for (final Category category : Category.values()) {
             builder.suggest(category.id());
         }
@@ -65,6 +66,19 @@ public class SablePathfinder {
                                     this.sendDebugStatus(ctx.getSource(), "pathing", enabled);
                                     return 1;
                                 })))
+                .then(Commands.literal("debug_analysis")
+                        .executes(ctx -> {
+                            final boolean enabled = MobPathDebugState.toggleAnalysis();
+                            this.sendDebugStatus(ctx.getSource(), "analysis", enabled);
+                            return 1;
+                        })
+                        .then(Commands.argument("enabled", BoolArgumentType.bool())
+                                .executes(ctx -> {
+                                    final boolean enabled = BoolArgumentType.getBool(ctx, "enabled");
+                                    MobPathDebugState.setAnalysisEnabled(enabled);
+                                    this.sendDebugStatus(ctx.getSource(), "analysis", enabled);
+                                    return 1;
+                                })))
                 .then(Commands.literal("debug")
                         .executes(ctx -> {
                             this.sendDebugList(ctx.getSource());
@@ -86,6 +100,19 @@ public class SablePathfinder {
                                             final boolean enabled = BoolArgumentType.getBool(ctx, "enabled");
                                             MobPathDebugState.setPathRelatedEnabled(enabled);
                                             this.sendDebugStatus(ctx.getSource(), "pathing", enabled);
+                                            return 1;
+                                        })))
+                        .then(Commands.literal("analysis")
+                                .executes(ctx -> {
+                                    final boolean enabled = MobPathDebugState.toggleAnalysis();
+                                    this.sendDebugStatus(ctx.getSource(), "analysis", enabled);
+                                    return 1;
+                                })
+                                .then(Commands.argument("enabled", BoolArgumentType.bool())
+                                        .executes(ctx -> {
+                                            final boolean enabled = BoolArgumentType.getBool(ctx, "enabled");
+                                            MobPathDebugState.setAnalysisEnabled(enabled);
+                                            this.sendDebugStatus(ctx.getSource(), "analysis", enabled);
                                             return 1;
                                         })))
                         .then(Commands.argument("category", StringArgumentType.word())
@@ -113,6 +140,9 @@ public class SablePathfinder {
         if ("pathing".equalsIgnoreCase(categoryId)) {
             return MobPathDebugState.togglePathRelated();
         }
+        if ("analysis".equalsIgnoreCase(categoryId)) {
+            return MobPathDebugState.toggleAnalysis();
+        }
 
         return MobPathDebugState.toggle(Category.byId(categoryId));
     }
@@ -124,6 +154,10 @@ public class SablePathfinder {
         }
         if ("pathing".equalsIgnoreCase(categoryId)) {
             MobPathDebugState.setPathRelatedEnabled(enabled);
+            return;
+        }
+        if ("analysis".equalsIgnoreCase(categoryId)) {
+            MobPathDebugState.setAnalysisEnabled(enabled);
             return;
         }
 

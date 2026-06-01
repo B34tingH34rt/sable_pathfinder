@@ -1,6 +1,7 @@
 package b34tingh34rt.sable_pathfinder.debug;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.pathfinder.Node;
 import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.Vec3;
@@ -31,8 +32,9 @@ public final class PathNodeDebugState {
             return;
         }
 
-        CAPTURED_SOURCES.get().merge(pos.asLong(), source, PathNodeDebugState::preferSableSource);
-        CAPTURE_INFO.get().record(pos, source);
+        final PathNodeSource queriedSource = source.withQueryPos(pos);
+        CAPTURED_SOURCES.get().merge(pos.asLong(), queriedSource, PathNodeDebugState::preferSableSource);
+        CAPTURE_INFO.get().record(pos, queriedSource);
     }
 
     public static void recordProbe(final String hook, final BlockPos pos, final String context) {
@@ -43,10 +45,15 @@ public final class PathNodeDebugState {
         CAPTURE_INFO.get().recordProbe(hook, pos, context);
     }
 
-    public static void tagPath(final Path path) {
+    public static Path tagPath(final Path path) {
         if (path == null) {
             CAPTURE_ACTIVE.set(Boolean.FALSE);
-            return;
+            return null;
+        }
+
+        if (CAPTURED_SOURCES.get().isEmpty() && hasTaggedNode(path)) {
+            CAPTURE_ACTIVE.set(Boolean.FALSE);
+            return SegmentedPath.wrap(path);
         }
 
         for (int i = 0; i < path.getNodeCount(); i++) {
@@ -56,6 +63,17 @@ public final class PathNodeDebugState {
         }
 
         CAPTURE_ACTIVE.set(Boolean.FALSE);
+        return SegmentedPath.wrap(path);
+    }
+
+    private static boolean hasTaggedNode(final Path path) {
+        for (int i = 0; i < path.getNodeCount(); i++) {
+            if (sourceFor(path.getNode(i)) != null) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public static PathNodeSource sourceFor(final Node node) {
@@ -159,7 +177,62 @@ public final class PathNodeDebugState {
 
     public static Vec3 displayPosFor(final Node node) {
         final PathNodeSource source = sourceFor(node);
-        return source == null ? node.asBlockPos().getCenter() : source.displayPos();
+        return source == null ? node.asBlockPos().getCenter() : source.projectedNodeCenter(node.asBlockPos());
+    }
+
+    public static Vec3 entityPosFor(final Node node, final Entity entity) {
+        final PathNodeSource source = sourceFor(node);
+        return source == null ? null : source.projectedNodeEntityPos(node.asBlockPos(), entity);
+    }
+
+    public static BlockPos blockPosFor(final Node node) {
+        final PathNodeSource source = sourceFor(node);
+        return source == null ? null : source.projectedNodeBlock(node.asBlockPos());
+    }
+
+    public static String describeSegments(final Path path) {
+        if (path == null || path.getNodeCount() < 1) {
+            return "none";
+        }
+
+        final StringBuilder builder = new StringBuilder();
+        String currentSegment = null;
+        int segmentStart = 0;
+        int segmentCount = 0;
+
+        for (int i = 0; i < path.getNodeCount(); i++) {
+            final PathNodeSource source = sourceFor(path.getNode(i));
+            final String segment = source == null ? "world/unknown" : source.originLabel();
+            if (currentSegment == null) {
+                currentSegment = segment;
+                segmentStart = i;
+                continue;
+            }
+
+            if (!currentSegment.equals(segment)) {
+                appendSegment(builder, segmentCount++, segmentStart, i - 1, currentSegment);
+                currentSegment = segment;
+                segmentStart = i;
+            }
+        }
+
+        appendSegment(builder, segmentCount, segmentStart, path.getNodeCount() - 1, currentSegment);
+        return builder.toString();
+    }
+
+    private static void appendSegment(final StringBuilder builder, final int segmentIndex, final int start, final int end, final String origin) {
+        if (!builder.isEmpty()) {
+            builder.append(" | ");
+        }
+
+        builder.append("#")
+                .append(segmentIndex)
+                .append(" nodes ")
+                .append(start)
+                .append("-")
+                .append(end)
+                .append(" ")
+                .append(origin);
     }
 
     private static PathNodeSource sourceForNode(final BlockPos nodePos) {

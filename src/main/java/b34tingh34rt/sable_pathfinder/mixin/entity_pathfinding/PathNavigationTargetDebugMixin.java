@@ -4,6 +4,7 @@ import b34tingh34rt.sable_pathfinder.debug.MobPathDebugState;
 import b34tingh34rt.sable_pathfinder.debug.MobPathDebugState.Category;
 import b34tingh34rt.sable_pathfinder.debug.PathNodeDebugState;
 import b34tingh34rt.sable_pathfinder.debug.PathNodeSource;
+import b34tingh34rt.sable_pathfinder.debug.SegmentedPath;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
@@ -23,6 +24,7 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Locale;
 import java.util.Set;
@@ -49,10 +51,43 @@ public abstract class PathNavigationTargetDebugMixin {
     protected Path path;
 
     @Shadow
+    protected float maxDistanceToWaypoint;
+
+    @Shadow
     public abstract boolean moveTo(final Path pathentity, final double speed);
 
     @Shadow
+    protected abstract Vec3 getTempMobPos();
+
+    @Shadow
     protected abstract Path createPath(final Set<BlockPos> targets, final int regionOffset, final boolean offsetUpward, final int accuracy);
+
+    @Inject(method = "followThePath", at = @At("RETURN"), require = 0)
+    private void sablePathfinder$advanceSegmentedPathByProjectedNode(final CallbackInfo ci) {
+        if (!(this.path instanceof SegmentedPath) || this.path.isDone()) {
+            return;
+        }
+
+        final Vec3 mobPos = this.getTempMobPos();
+        final Vec3 nextPos = this.path.getNextEntityPos(this.mob);
+        final double dx = Math.abs(this.mob.getX() - nextPos.x);
+        final double dy = Math.abs(mobPos.y - nextPos.y);
+        final double dz = Math.abs(this.mob.getZ() - nextPos.z);
+        if (dx > this.maxDistanceToWaypoint || dz > this.maxDistanceToWaypoint || dy >= 1.0D) {
+            return;
+        }
+
+        final int advancedFrom = this.path.getNextNodeIndex();
+        this.path.advance();
+        if (MobPathDebugState.isEnabled(Category.MOVEMENT) && !this.level.isClientSide) {
+            this.sablePathfinder$sendDebugMessage(
+                    "[Sable Pathfinder] Segmented path advanced " +
+                            this.sablePathfinder$describeEntity(this.mob) +
+                            " past node #" + advancedFrom +
+                            " using projected position " + this.sablePathfinder$formatVec(nextPos)
+            );
+        }
+    }
 
     @Inject(method = "moveTo(Lnet/minecraft/world/entity/Entity;D)Z", at = @At("HEAD"), cancellable = true, require = 0)
     private void sablePathfinder$debugMoveToEntitySource(final Entity entity, final double speed, final CallbackInfoReturnable<Boolean> cir) {
@@ -213,10 +248,10 @@ public abstract class PathNavigationTargetDebugMixin {
         }
     }
 
-    @Inject(method = "createPath(Ljava/util/Set;IZIF)Lnet/minecraft/world/level/pathfinder/Path;", at = @At("RETURN"), require = 0)
+    @Inject(method = "createPath(Ljava/util/Set;IZIF)Lnet/minecraft/world/level/pathfinder/Path;", at = @At("RETURN"), cancellable = true, require = 0)
     private void sablePathfinder$debugActualPath(final Set<BlockPos> targets, final int regionOffset, final boolean offsetUpward,
                                                  final int accuracy, final float followRange, final CallbackInfoReturnable<Path> cir) {
-        PathNodeDebugState.tagPath(cir.getReturnValue());
+        cir.setReturnValue(PathNodeDebugState.tagPath(cir.getReturnValue()));
 
         if (this.level.isClientSide) {
             return;
@@ -224,7 +259,8 @@ public abstract class PathNavigationTargetDebugMixin {
 
         final boolean showActualPath = MobPathDebugState.isEnabled(Category.ACTUAL_PATH);
         final boolean showRegion = MobPathDebugState.isEnabled(Category.REGION);
-        if (!showActualPath && !showRegion) {
+        final boolean showSegments = MobPathDebugState.isEnabled(Category.SEGMENTS);
+        if (!showActualPath && !showRegion && !showSegments) {
             return;
         }
 
@@ -243,6 +279,13 @@ public abstract class PathNavigationTargetDebugMixin {
                         "[Sable Pathfinder] Region capture for " +
                                 this.sablePathfinder$describeEntity(this.mob) +
                                 ": " + PathNodeDebugState.describePathRegionEvidence(null, SABLE_PATHFINDER$MAX_REGION_EVIDENCE_NODES)
+                );
+            }
+            if (showSegments) {
+                this.sablePathfinder$sendDebugMessage(
+                        "[Sable Pathfinder] Segmented path for " +
+                                this.sablePathfinder$describeEntity(this.mob) +
+                                ": no path returned"
                 );
             }
             return;
@@ -272,6 +315,14 @@ public abstract class PathNavigationTargetDebugMixin {
                     "[Sable Pathfinder] Region capture for " +
                             this.sablePathfinder$describeEntity(this.mob) +
                             ": " + PathNodeDebugState.describePathRegionEvidence(path, SABLE_PATHFINDER$MAX_REGION_EVIDENCE_NODES)
+            );
+        }
+
+        if (showSegments) {
+            this.sablePathfinder$sendDebugMessage(
+                    "[Sable Pathfinder] Segmented path for " +
+                            this.sablePathfinder$describeEntity(this.mob) +
+                            ": " + PathNodeDebugState.describeSegments(path)
             );
         }
     }

@@ -9,11 +9,22 @@ public final class MobPathDebugState {
             Category.TARGETS,
             Category.REMAP,
             Category.ACTUAL_PATH,
+            Category.SEGMENTS,
             Category.CORRECTION,
             Category.REGION,
             Category.MOVEMENT,
             Category.PARTICLES,
             Category.NODE_LABELS
+    };
+    private static final Category[] ANALYSIS = {
+            Category.SOURCE,
+            Category.TARGETS,
+            Category.REMAP,
+            Category.ACTUAL_PATH,
+            Category.SEGMENTS,
+            Category.CORRECTION,
+            Category.REGION,
+            Category.MOVEMENT
     };
 
     private MobPathDebugState() {
@@ -61,6 +72,12 @@ public final class MobPathDebugState {
         return enabled;
     }
 
+    public static boolean toggleAnalysis() {
+        final boolean enabled = !isAnalysisEnabled();
+        setAnalysisEnabled(enabled);
+        return enabled;
+    }
+
     public static void setPathRelatedEnabled(final boolean enabled) {
         for (final Category category : PATH_RELATED) {
             setEnabled(category, enabled);
@@ -69,6 +86,24 @@ public final class MobPathDebugState {
 
     public static boolean isPathRelatedEnabled() {
         for (final Category category : PATH_RELATED) {
+            if (isEnabled(category)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static void setAnalysisEnabled(final boolean enabled) {
+        for (final Category category : ANALYSIS) {
+            setEnabled(category, enabled);
+        }
+        setEnabled(Category.PARTICLES, false);
+        setEnabled(Category.NODE_LABELS, false);
+    }
+
+    public static boolean isAnalysisEnabled() {
+        for (final Category category : ANALYSIS) {
             if (isEnabled(category)) {
                 return true;
             }
@@ -97,6 +132,7 @@ public final class MobPathDebugState {
         TARGETS("targets"),
         REMAP("remap"),
         ACTUAL_PATH("actual_path"),
+        SEGMENTS("segments"),
         CORRECTION("correction"),
         REGION("region"),
         MOVEMENT("movement"),

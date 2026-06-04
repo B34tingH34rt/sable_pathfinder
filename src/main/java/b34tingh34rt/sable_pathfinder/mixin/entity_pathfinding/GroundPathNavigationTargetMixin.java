@@ -1,8 +1,6 @@
 package b34tingh34rt.sable_pathfinder.mixin.entity_pathfinding;
 
-import b34tingh34rt.sable_pathfinder.debug.MobPathDebugState;
 import net.minecraft.core.BlockPos;
-import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
@@ -33,16 +31,6 @@ public abstract class GroundPathNavigationTargetMixin extends PathNavigation {
         final boolean isActiveTarget = activeTarget != null
                 && (entity == activeTarget || entity.getId() == activeTarget.getId() || entity.getUUID().equals(activeTarget.getUUID()));
 
-        if (MobPathDebugState.isEnabled()) {
-            this.level.players().forEach(player -> player.sendSystemMessage(Component.literal(
-                    "[Sable Pathfinder] GroundPathNavigation entity probe seen for " +
-                            mob.getName().getString() +
-                            " -> " + entity.getName().getString() +
-                            " | active target match " + isActiveTarget +
-                            " | accuracy " + accuracy
-            )));
-        }
-
         if (!isActiveTarget) {
             return;
         }
@@ -50,23 +38,6 @@ public abstract class GroundPathNavigationTargetMixin extends PathNavigation {
         final BlockPos worldTarget = entity.blockPosition();
         final Path correctedPath = super.createPath(Set.of(worldTarget), 16, true, accuracy);
         final boolean usefulPath = correctedPath != null && (correctedPath.canReach() || correctedPath.getNodeCount() > 1);
-
-        if (MobPathDebugState.isEnabled()) {
-            final String pathText = correctedPath == null
-                    ? "none"
-                    : "target " + correctedPath.getTarget().toShortString() +
-                    ", nodes " + correctedPath.getNodeCount() +
-                    ", can reach " + correctedPath.canReach() +
-                    (usefulPath ? "" : ", rejected one-node fallback");
-
-            this.level.players().forEach(player -> player.sendSystemMessage(Component.literal(
-                    "[Sable Pathfinder] Corrected GroundPathNavigation entity probe for " +
-                            mob.getName().getString() +
-                            " -> " + entity.getName().getString() +
-                            ": using world target " + worldTarget.toShortString() +
-                            " | path " + pathText
-            )));
-        }
 
         cir.setReturnValue(usefulPath ? correctedPath : null);
     }

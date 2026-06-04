@@ -1,6 +1,6 @@
 package b34tingh34rt.sable_pathfinder.mixin.entity_pathfinding;
 
-import b34tingh34rt.sable_pathfinder.debug.MobPathDebugState;
+import b34tingh34rt.sable_pathfinder.visualization.PathVisualizationState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.server.level.ServerLevel;
@@ -21,10 +21,10 @@ import java.util.Set;
 import java.util.function.BooleanSupplier;
 
 @Mixin(ServerLevel.class)
-public abstract class ServerLevelPathDebugMixin {
+public abstract class ServerLevelPathVisualizationMixin {
     @Inject(method = "tick(Ljava/util/function/BooleanSupplier;)V", at = @At("TAIL"))
     private void sablePathfinder$renderMobPaths(final BooleanSupplier shouldKeepTicking, final CallbackInfo ci) {
-        if (!MobPathDebugState.isEnabled()) {
+        if (!PathVisualizationState.isEnabled()) {
             return;
         }
 

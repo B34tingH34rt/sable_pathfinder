@@ -7,9 +7,9 @@
   "mixins": [
     "entity_pathfinding.GroundPathNavigationTargetMixin",
     "entity_pathfinding.PathNavigationMobAccessor",
-    "entity_pathfinding.PathNavigationTargetDebugMixin",
+    "entity_pathfinding.PathNavigationTargetMixin",
     "entity_pathfinding.PathNavigationRegionMixin",
-    "entity_pathfinding.ServerLevelPathDebugMixin"
+    "entity_pathfinding.ServerLevelPathVisualizationMixin"
   ],
   "injectors": {
     "defaultRequire": 1

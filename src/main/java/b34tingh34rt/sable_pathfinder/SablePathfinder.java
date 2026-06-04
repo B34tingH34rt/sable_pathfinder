@@ -1,6 +1,6 @@
 package b34tingh34rt.sable_pathfinder;
 
-import b34tingh34rt.sable_pathfinder.debug.MobPathDebugState;
+import b34tingh34rt.sable_pathfinder.visualization.PathVisualizationState;
 import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.logging.LogUtils;
 import net.minecraft.commands.Commands;
@@ -25,18 +25,18 @@ public class SablePathfinder {
     private void registerCommands(final RegisterCommandsEvent event) {
         event.getDispatcher().register(Commands.literal("sablepathfinder")
                 .requires(source -> source.hasPermission(2))
-                .then(Commands.literal("debug_paths")
+                .then(Commands.literal("visuals")
                         .executes(ctx -> {
-                            final boolean enabled = !MobPathDebugState.isEnabled();
-                            MobPathDebugState.setEnabled(enabled);
-                            ctx.getSource().sendSuccess(() -> Component.translatable("commands.sable_pathfinder.debug_paths", enabled), true);
+                            final boolean enabled = !PathVisualizationState.isEnabled();
+                            PathVisualizationState.setEnabled(enabled);
+                            ctx.getSource().sendSuccess(() -> Component.translatable("commands.sable_pathfinder.visuals", enabled), true);
                             return 1;
                         })
                         .then(Commands.argument("enabled", BoolArgumentType.bool())
                                 .executes(ctx -> {
                                     final boolean enabled = BoolArgumentType.getBool(ctx, "enabled");
-                                    MobPathDebugState.setEnabled(enabled);
-                                    ctx.getSource().sendSuccess(() -> Component.translatable("commands.sable_pathfinder.debug_paths", enabled), true);
+                                    PathVisualizationState.setEnabled(enabled);
+                                    ctx.getSource().sendSuccess(() -> Component.translatable("commands.sable_pathfinder.visuals", enabled), true);
                                     return 1;
                                 }))));
     }

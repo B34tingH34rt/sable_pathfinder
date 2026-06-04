@@ -1,13 +1,11 @@
 package b34tingh34rt.sable_pathfinder.path;
 
-import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.pathfinder.Node;
 import net.minecraft.world.level.pathfinder.Path;
-import net.minecraft.world.phys.Vec3;
 
 import javax.annotation.Nullable;
 import java.util.ArrayDeque;
@@ -15,7 +13,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 public final class PathProjectionContext {
     private static final ThreadLocal<ArrayDeque<State>> ACTIVE = ThreadLocal.withInitial(ArrayDeque::new);
@@ -43,7 +40,7 @@ public final class PathProjectionContext {
             return;
         }
 
-        state.resolvedBlocks.put(worldQueryPos.immutable(), SegmentPoint.subLevel(worldQueryPos.immutable(), subLevel, localPos.immutable()));
+        state.resolvedBlocks.putIfAbsent(worldQueryPos.immutable(), SegmentPoint.subLevel(worldQueryPos.immutable(), subLevel, localPos.immutable()));
     }
 
     public static void attachToPath(final Path path) {
@@ -53,16 +50,14 @@ public final class PathProjectionContext {
         }
 
         final List<SegmentPoint> points = new ArrayList<>(path.getNodeCount());
-        boolean usesSubLevel = false;
         for (int i = 0; i < path.getNodeCount(); i++) {
-            final SegmentPoint point = state.resolveNode(path.getNode(i));
-            points.add(point);
-            usesSubLevel |= point.usesSubLevel();
+            points.add(SegmentPoint.world(path.getNode(i).asBlockPos()));
         }
 
+        boolean usesSubLevel = false;
         final List<SegmentEdge> edges = new ArrayList<>(path.getNodeCount() - 1);
         for (int i = 1; i < path.getNodeCount(); i++) {
-            final SegmentEdge edge = state.resolveEdge(points.get(i - 1), points.get(i));
+            final SegmentEdge edge = state.resolveEdge(path.getNode(i - 1), path.getNode(i));
             edges.add(edge);
             usesSubLevel |= edge.from().usesSubLevel() || edge.to().usesSubLevel();
         }
@@ -88,45 +83,24 @@ public final class PathProjectionContext {
             this.mob = mob;
         }
 
-        private SegmentPoint resolveNode(final Node node) {
-            final BlockPos nodePos = node.asBlockPos();
-            final SegmentPoint exact = this.resolvedBlocks.get(nodePos);
-            if (exact != null) {
+        private SegmentEdge resolveEdge(final Node fromNode, final Node toNode) {
+            final BlockPos fromWorldPos = fromNode.asBlockPos();
+            final BlockPos toWorldPos = toNode.asBlockPos();
+            return new SegmentEdge(this.resolveNodeSurface(fromWorldPos), this.resolveNodeSurface(toWorldPos));
+        }
+
+        private SegmentPoint resolveNodeSurface(final BlockPos nodeWorldPos) {
+            final SegmentPoint exact = this.resolvedBlocks.get(nodeWorldPos);
+            if (exact != null && exact.usesSubLevel()) {
                 return exact;
             }
 
-            final SegmentPoint support = this.resolvedBlocks.get(nodePos.below());
+            final SegmentPoint support = this.resolvedBlocks.get(nodeWorldPos.below());
             if (support != null && support.usesSubLevel()) {
-                return SegmentPoint.subLevel(nodePos, support.subLevel(), support.localPos().above());
+                return SegmentPoint.subLevel(nodeWorldPos, support.subLevel(), support.localPos().above());
             }
 
-            return SegmentPoint.world(nodePos);
-        }
-
-        private SegmentEdge resolveEdge(final SegmentPoint from, final SegmentPoint to) {
-            if (from.usesSubLevel() || to.usesSubLevel()) {
-                return new SegmentEdge(from, to);
-            }
-
-            final Optional<SubLevel> crossingSubLevel = this.findCrossingSubLevel(from.worldPos().getCenter(), to.worldPos().getCenter());
-            if (crossingSubLevel.isEmpty()) {
-                return new SegmentEdge(from, to);
-            }
-
-            final SubLevel subLevel = crossingSubLevel.get();
-            return new SegmentEdge(this.projectWorldPointThroughSubLevel(from.worldPos(), subLevel), this.projectWorldPointThroughSubLevel(to.worldPos(), subLevel));
-        }
-
-        private Optional<SubLevel> findCrossingSubLevel(final Vec3 from, final Vec3 to) {
-            for (int i = 1; i <= 3; i++) {
-                final Vec3 sample = from.lerp(to, i * 0.25D);
-                final SubLevel subLevel = Sable.HELPER.<SubLevel, SubLevel>runIncludingSubLevels(this.level, sample, false, null, (candidateSubLevel, candidatePos) -> candidateSubLevel);
-                if (subLevel != null) {
-                    return Optional.of(subLevel);
-                }
-            }
-
-            return Optional.empty();
+            return SegmentPoint.world(nodeWorldPos);
         }
 
         private SegmentPoint projectWorldPointThroughSubLevel(final BlockPos worldPos, final SubLevel subLevel) {

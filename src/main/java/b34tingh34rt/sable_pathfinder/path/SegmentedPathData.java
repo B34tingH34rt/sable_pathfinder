@@ -1,12 +1,18 @@
 package b34tingh34rt.sable_pathfinder.path;
 
+import dev.ryanhcode.sable.Sable;
+import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.pathfinder.Path;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 public final class SegmentedPathData {
@@ -59,6 +65,100 @@ public final class SegmentedPathData {
         }
 
         return false;
+    }
+
+    public boolean shouldRecomputeForMovedSubLevels(final Level level, final int nextNodeIndex) {
+        if (this.edges.isEmpty()) {
+            return false;
+        }
+
+        final int start = Math.max(0, Math.min(nextNodeIndex - 1, this.edges.size() - 1));
+        for (int i = start; i < this.edges.size(); i++) {
+            if (this.edgeChangedBecauseSubLevelsMoved(level, this.edges.get(i))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean edgeChangedBecauseSubLevelsMoved(final Level level, final SegmentEdge edge) {
+        final SegmentPoint from = edge.from();
+        final SegmentPoint to = edge.to();
+        if (this.hasRemovedSubLevel(from) || this.hasRemovedSubLevel(to)) {
+            return true;
+        }
+
+        if (!from.usesSubLevel() && !to.usesSubLevel()) {
+            return this.worldEdgeNowIntersectsPathableSubLevel(level, from.worldPos().getCenter(), to.worldPos().getCenter());
+        }
+
+        if (from.usesSubLevel() != to.usesSubLevel()) {
+            final SegmentPoint subLevelPoint = from.usesSubLevel() ? from : to;
+            return subLevelPoint.projectedBlockPos().distManhattan(subLevelPoint.worldPos()) > 1;
+        }
+
+        if (!Objects.equals(from.subLevelId(), to.subLevelId())) {
+            return from.projectedBlockPos().distManhattan(from.worldPos()) > 1 || to.projectedBlockPos().distManhattan(to.worldPos()) > 1;
+        }
+
+        return this.subLevelEdgeNoLongerMatchesExpectedSubLevel(level, from, to);
+    }
+
+    private boolean hasRemovedSubLevel(final SegmentPoint point) {
+        return point.usesSubLevel() && point.subLevel().isRemoved();
+    }
+
+    private boolean worldEdgeNowIntersectsPathableSubLevel(final Level level, final Vec3 from, final Vec3 to) {
+        final int steps = this.sampleSteps(from, to);
+        for (int i = 0; i <= steps; i++) {
+            final Vec3 sample = from.lerp(to, (double) i / (double) steps);
+            if (this.findPathableSubLevelAt(level, sample) != null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean subLevelEdgeNoLongerMatchesExpectedSubLevel(final Level level, final SegmentPoint from, final SegmentPoint to) {
+        final UUID expectedSubLevelId = from.subLevelId();
+        final Vec3 fromCenter = from.nodeCenter();
+        final Vec3 toCenter = to.nodeCenter();
+        final int steps = this.sampleSteps(fromCenter, toCenter);
+        for (int i = 0; i <= steps; i++) {
+            final Vec3 sample = fromCenter.lerp(toCenter, (double) i / (double) steps);
+            final SubLevel actualSubLevel = this.findPathableSubLevelAt(level, sample);
+            if (actualSubLevel == null || !Objects.equals(expectedSubLevelId, actualSubLevel.getUniqueId())) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private int sampleSteps(final Vec3 from, final Vec3 to) {
+        return Math.max(1, (int) Math.ceil(from.distanceTo(to) * 2.0D));
+    }
+
+    private SubLevel findPathableSubLevelAt(final Level level, final Vec3 worldPoint) {
+        return Sable.HELPER.<SubLevel, SubLevel>runIncludingSubLevels(level, worldPoint, false, null, (candidateSubLevel, candidatePos) -> {
+            if (candidateSubLevel == null || candidateSubLevel.getUniqueId() == null) {
+                return null;
+            }
+
+            return this.isPathRelevantBlock(level, candidatePos) || this.isPathRelevantBlock(level, candidatePos.below()) ? candidateSubLevel : null;
+        });
+    }
+
+    private boolean isPathRelevantBlock(final Level level, final BlockPos pos) {
+        final BlockState blockState = level.getBlockState(pos);
+        if (!blockState.isAir()) {
+            return true;
+        }
+
+        final FluidState fluidState = level.getFluidState(pos);
+        return !fluidState.isEmpty();
     }
 
     private boolean edgeTouchesChangedLocalBlock(final SegmentEdge edge, final UUID subLevelId, final BlockPos changedLocalPos) {

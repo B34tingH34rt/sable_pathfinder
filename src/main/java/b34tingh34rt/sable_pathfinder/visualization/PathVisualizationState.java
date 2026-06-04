@@ -1,7 +1,7 @@
 package b34tingh34rt.sable_pathfinder.visualization;
 
 public final class PathVisualizationState {
-    private static volatile boolean enabled = true;
+    private static volatile boolean enabled = false;
 
     private PathVisualizationState() {
     }

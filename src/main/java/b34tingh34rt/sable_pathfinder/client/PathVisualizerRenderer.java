@@ -1,27 +1,32 @@
 package b34tingh34rt.sable_pathfinder.client;
 
 import b34tingh34rt.sable_pathfinder.SablePathfinder;
-import b34tingh34rt.sable_pathfinder.debug.PathDebugMarkers;
-import b34tingh34rt.sable_pathfinder.mixin.client.PathfindingRendererAccessor;
+import b34tingh34rt.sable_pathfinder.visualization.PathGizmoState;
 import b34tingh34rt.sable_pathfinder.visualization.PathVisualizationState;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import dev.ryanhcode.sable.Sable;
+import dev.ryanhcode.sable.sublevel.ClientSubLevel;
+import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.debug.DebugRenderer;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.pathfinder.Node;
-import net.minecraft.world.level.pathfinder.Path;
-import net.minecraft.world.level.pathfinder.PathType;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import org.joml.Quaternionf;
 
-import java.util.Locale;
-import java.util.Map;
+import java.util.Collection;
 
 @EventBusSubscriber(modid = SablePathfinder.MODID, value = Dist.CLIENT)
 public final class PathVisualizerRenderer {
-    private static final int SABLE_PATHFINDER$MAX_SURROUNDING_OVERLAY_BOXES = 1200;
-    private static final int SABLE_PATHFINDER$MAX_SURROUNDING_LABELS = 220;
+    private static final int SABLE_PATHFINDER$MAX_GIZMO_NODE_MARKERS = 1800;
+    private static final double SABLE_PATHFINDER$NODE_MARKER_SIZE = 0.1;
+    private static final double SABLE_PATHFINDER$LINE_WIDTH = 2.0;
 
     private static boolean sablePathfinder$overlayEnabled = true;
     private static boolean sablePathfinder$overlayErrorLogged = false;
@@ -40,151 +45,129 @@ public final class PathVisualizerRenderer {
             return;
         }
 
-        final Map<Integer, Path> pathMap = ((PathfindingRendererAccessor) minecraft.debugRenderer.pathfindingRenderer).sablePathfinder$getPathMap();
-        if (pathMap.isEmpty()) {
+        final Collection<PathGizmoState.Entry> gizmoEntries = PathGizmoState.entries();
+        if (gizmoEntries.isEmpty()) {
             return;
         }
 
-        final var bufferSource = minecraft.renderBuffers().bufferSource();
-        final double cameraX = event.getCamera().getPosition().x;
-        final double cameraY = event.getCamera().getPosition().y;
-        final double cameraZ = event.getCamera().getPosition().z;
-
-        minecraft.debugRenderer.pathfindingRenderer.render(
-                event.getPoseStack(),
-                bufferSource,
-                cameraX,
-                cameraY,
-                cameraZ
-        );
+        final MultiBufferSource.BufferSource bufferSource = minecraft.renderBuffers().bufferSource();
 
         try {
-            int renderedBoxes = 0;
-            int renderedLabels = 0;
-            for (final Path path : pathMap.values()) {
-                if (path == null) {
-                    continue;
-                }
-
-                final Path.DebugData debugData = path.debugData();
-                if (debugData == null) {
-                    continue;
-                }
-
-                for (final Node node : debugData.openSet()) {
-                    if (renderedBoxes >= SABLE_PATHFINDER$MAX_SURROUNDING_OVERLAY_BOXES
-                            && renderedLabels >= SABLE_PATHFINDER$MAX_SURROUNDING_LABELS) {
-                        break;
-                    }
-
-                    if (sablePathfinder$renderSurroundingNode(event, minecraft, bufferSource, node, cameraX, cameraY, cameraZ, false)) {
-                        renderedBoxes++;
-                        if (renderedLabels < SABLE_PATHFINDER$MAX_SURROUNDING_LABELS) {
-                            sablePathfinder$renderSurroundingNodeLabel(event, bufferSource, node, cameraX, cameraY, cameraZ, false);
-                            renderedLabels++;
-                        }
-                    }
-                }
-
-                for (final Node node : debugData.closedSet()) {
-                    if (renderedBoxes >= SABLE_PATHFINDER$MAX_SURROUNDING_OVERLAY_BOXES
-                            && renderedLabels >= SABLE_PATHFINDER$MAX_SURROUNDING_LABELS) {
-                        break;
-                    }
-
-                    if (sablePathfinder$renderSurroundingNode(event, minecraft, bufferSource, node, cameraX, cameraY, cameraZ, true)) {
-                        renderedBoxes++;
-                        if (renderedLabels < SABLE_PATHFINDER$MAX_SURROUNDING_LABELS) {
-                            sablePathfinder$renderSurroundingNodeLabel(event, bufferSource, node, cameraX, cameraY, cameraZ, true);
-                            renderedLabels++;
-                        }
-                    }
-                }
-
-                if (renderedBoxes >= SABLE_PATHFINDER$MAX_SURROUNDING_OVERLAY_BOXES
-                        && renderedLabels >= SABLE_PATHFINDER$MAX_SURROUNDING_LABELS) {
-                    break;
-                }
-            }
+            sablePathfinder$renderPathGizmos(event, bufferSource, gizmoEntries);
         } catch (final Exception exception) {
             sablePathfinder$overlayEnabled = false;
             if (!sablePathfinder$overlayErrorLogged) {
                 SablePathfinder.LOGGER.warn("Path visualizer overlay failed and has been disabled for this run.", exception);
                 sablePathfinder$overlayErrorLogged = true;
             }
+        } finally {
+            bufferSource.endBatch(RenderType.debugFilledBox());
+            bufferSource.endBatch(RenderType.debugLineStrip(SABLE_PATHFINDER$LINE_WIDTH));
+            bufferSource.endBatch();
         }
     }
 
-    private static boolean sablePathfinder$renderSurroundingNode(
+    private static void sablePathfinder$renderPathGizmos(
             final RenderLevelStageEvent event,
-            final Minecraft minecraft,
-            final net.minecraft.client.renderer.MultiBufferSource bufferSource,
-            final Node node,
-            final double cameraX,
-            final double cameraY,
-            final double cameraZ,
-            final boolean fromClosedSet
+            final MultiBufferSource bufferSource,
+            final Collection<PathGizmoState.Entry> gizmoEntries
     ) {
-        if (node == null || node.walkedDistance != PathDebugMarkers.SURROUNDING_NODE_MARKER) {
-            return false;
+        int renderedMarkers = 0;
+        for (final PathGizmoState.Entry entry : gizmoEntries) {
+            if (entry.nodes().isEmpty()) {
+                continue;
+            }
+
+            final int red = (entry.rgb() >> 16) & 0xFF;
+            final int green = (entry.rgb() >> 8) & 0xFF;
+            final int blue = entry.rgb() & 0xFF;
+            final float redFloat = red / 255.0F;
+            final float greenFloat = green / 255.0F;
+            final float blueFloat = blue / 255.0F;
+
+            sablePathfinder$renderPathLines(event, bufferSource, entry.nodes(), red, green, blue);
+
+            for (int i = 0; i < entry.nodes().size(); i++) {
+                if (renderedMarkers >= SABLE_PATHFINDER$MAX_GIZMO_NODE_MARKERS) {
+                    return;
+                }
+
+                final BlockPos node = entry.nodes().get(i);
+                final float alpha = i == 0 ? 0.85F : 0.55F;
+                sablePathfinder$renderNodeMarker(event, bufferSource, node, redFloat, greenFloat, blueFloat, alpha);
+                renderedMarkers++;
+            }
         }
-
-        final BlockPos blockPos = node.asBlockPos();
-        if (!minecraft.level.isLoaded(blockPos)) {
-            return false;
-        }
-
-        final float[] color = sablePathfinder$colorForType(node.type, fromClosedSet);
-
-        final double x1 = blockPos.getX() - cameraX;
-        final double y1 = blockPos.getY() - cameraY;
-        final double z1 = blockPos.getZ() - cameraZ;
-        final double x2 = x1 + 1.0;
-        final double y2 = y1 + 1.0;
-        final double z2 = z1 + 1.0;
-
-        DebugRenderer.renderFilledBox(event.getPoseStack(), bufferSource, x1, y1, z1, x2, y2, z2, color[0], color[1], color[2], color[3]);
-        return true;
     }
 
-    private static void sablePathfinder$renderSurroundingNodeLabel(
+    private static void sablePathfinder$renderPathLines(
             final RenderLevelStageEvent event,
-            final net.minecraft.client.renderer.MultiBufferSource bufferSource,
-            final Node node,
-            final double cameraX,
-            final double cameraY,
-            final double cameraZ,
-            final boolean fromClosedSet
+            final MultiBufferSource bufferSource,
+            final java.util.List<BlockPos> nodes,
+            final int red,
+            final int green,
+            final int blue
     ) {
-        final double x = node.x + 0.5;
-        final double y = node.y + 0.15;
-        final double z = node.z + 0.5;
-        final double dx = x - cameraX;
-        final double dy = y - cameraY;
-        final double dz = z - cameraZ;
-        if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > 80.0D) {
+        if (nodes.size() < 2) {
             return;
         }
 
-        final String prefix = fromClosedSet ? "C" : "O";
-        final String label = "SPF " + prefix + " " + node.type + " " + String.format(Locale.ROOT, "%.2f", node.costMalus);
-        final int color = fromClosedSet ? 0xFFB46E6E : 0xFF7EE8FF;
-        DebugRenderer.renderFloatingText(event.getPoseStack(), bufferSource, label, x, y, z, color, 0.012F, true, 0.0F, true);
+        final Camera camera = Minecraft.getInstance().gameRenderer.getMainCamera();
+        if (!camera.isInitialized()) {
+            return;
+        }
+
+        final Vec3 cameraPosition = camera.getPosition();
+        final VertexConsumer lineConsumer = bufferSource.getBuffer(RenderType.debugLineStrip(SABLE_PATHFINDER$LINE_WIDTH));
+        for (final BlockPos node : nodes) {
+            final Vec3 point = sablePathfinder$projectNodeCenter(node, cameraPosition);
+            lineConsumer.addVertex(event.getPoseStack().last(), (float) point.x, (float) point.y, (float) point.z).setColor(red, green, blue, 220);
+        }
+
+        if (bufferSource instanceof MultiBufferSource.BufferSource immediate) {
+            immediate.endBatch(RenderType.debugLineStrip(SABLE_PATHFINDER$LINE_WIDTH));
+        }
     }
 
-    private static float[] sablePathfinder$colorForType(final PathType type, final boolean fromClosedSet) {
-        if (fromClosedSet || type == PathType.BLOCKED || type == PathType.DAMAGE_FIRE || type == PathType.DAMAGE_OTHER || type == PathType.LAVA) {
-            return new float[]{1.0F, 0.35F, 0.35F, 0.26F};
+    private static void sablePathfinder$renderNodeMarker(
+            final RenderLevelStageEvent event,
+            final MultiBufferSource bufferSource,
+            final BlockPos node,
+            final float red,
+            final float green,
+            final float blue,
+            final float alpha
+    ) {
+        final Camera camera = Minecraft.getInstance().gameRenderer.getMainCamera();
+        if (!camera.isInitialized()) {
+            return;
         }
 
-        if (type == PathType.WATER || type == PathType.WATER_BORDER) {
-            return new float[]{0.35F, 0.62F, 1.0F, 0.24F};
+        final double halfSize = SABLE_PATHFINDER$NODE_MARKER_SIZE * 0.5;
+        final AABB markerBox = new AABB(-halfSize, -halfSize, -halfSize, halfSize, halfSize, halfSize);
+        final ClientSubLevel subLevel = Sable.HELPER.getContainingClient(node);
+
+        if (subLevel == null) {
+            final Vec3 center = node.getCenter().subtract(camera.getPosition());
+            DebugRenderer.renderFilledBox(event.getPoseStack(), bufferSource, markerBox.move(center), red, green, blue, alpha);
+            return;
         }
 
-        if (type == PathType.WALKABLE || type == PathType.WALKABLE_DOOR || type == PathType.OPEN || type == PathType.DOOR_OPEN) {
-            return new float[]{0.35F, 1.0F, 0.45F, 0.22F};
+        final var pose = subLevel.renderPose();
+        final Vec3 center = pose.transformPosition(node.getCenter()).subtract(camera.getPosition());
+        event.getPoseStack().pushPose();
+        event.getPoseStack().translate(center.x, center.y, center.z);
+        event.getPoseStack().mulPose(new Quaternionf(pose.orientation()));
+        DebugRenderer.renderFilledBox(event.getPoseStack(), bufferSource, markerBox, red, green, blue, alpha);
+        event.getPoseStack().popPose();
+    }
+
+    private static Vec3 sablePathfinder$projectNodeCenter(final BlockPos node, final Vec3 cameraPosition) {
+        final ClientSubLevel subLevel = Sable.HELPER.getContainingClient(node);
+        if (subLevel == null) {
+            return node.getCenter().subtract(cameraPosition);
         }
 
-        return new float[]{0.75F, 0.75F, 1.0F, 0.22F};
+        return subLevel.renderPose().transformPosition(node.getCenter()).subtract(cameraPosition);
     }
 }

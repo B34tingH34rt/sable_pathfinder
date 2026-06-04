@@ -1,6 +1,8 @@
 package b34tingh34rt.sable_pathfinder;
 
 import b34tingh34rt.sable_pathfinder.visualization.PathVisualizationState;
+import b34tingh34rt.sable_pathfinder.network.PathGizmoPayload;
+import b34tingh34rt.sable_pathfinder.visualization.PathGizmoState;
 import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.logging.LogUtils;
 import net.minecraft.commands.Commands;
@@ -10,6 +12,7 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import org.slf4j.Logger;
 
 @Mod(SablePathfinder.MODID)
@@ -18,8 +21,13 @@ public class SablePathfinder {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public SablePathfinder(IEventBus modEventBus, ModContainer modContainer) {
+        modEventBus.addListener(this::registerPayloadHandlers);
         NeoForge.EVENT_BUS.addListener(this::registerCommands);
         LOGGER.info("Initializing Sable: Pathfinder");
+    }
+
+    private void registerPayloadHandlers(final RegisterPayloadHandlersEvent event) {
+        event.registrar("1").playToClient(PathGizmoPayload.TYPE, PathGizmoPayload.STREAM_CODEC, (payload, context) -> PathGizmoState.accept(payload));
     }
 
     private void registerCommands(final RegisterCommandsEvent event) {

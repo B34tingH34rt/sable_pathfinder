@@ -1,27 +1,32 @@
 package b34tingh34rt.sable_pathfinder.mixin.entity_pathfinding;
 
+import b34tingh34rt.sable_pathfinder.SablePathfinder;
+import b34tingh34rt.sable_pathfinder.network.PathGizmoPayload;
 import b34tingh34rt.sable_pathfinder.visualization.PathVisualizationState;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
-import org.joml.Vector3f;
+import net.neoforged.neoforge.network.PacketDistributor;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import java.util.HashSet;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.BooleanSupplier;
 
 @Mixin(ServerLevel.class)
 public abstract class ServerLevelPathVisualizationMixin {
+    private static final int SABLE_PATHFINDER$PATH_UPDATE_INTERVAL_TICKS = 5;
+    private static final double SABLE_PATHFINDER$VIEW_DISTANCE = 96.0;
+    private static final int SABLE_PATHFINDER$MAX_PATHS_PER_PLAYER = 96;
+    private static boolean sablePathfinder$loggedFirstPathSend = false;
+
     @Inject(method = "tick(Ljava/util/function/BooleanSupplier;)V", at = @At("TAIL"))
     private void sablePathfinder$renderMobPaths(final BooleanSupplier shouldKeepTicking, final CallbackInfo ci) {
         if (!PathVisualizationState.isEnabled()) {
@@ -29,63 +34,51 @@ public abstract class ServerLevelPathVisualizationMixin {
         }
 
         final ServerLevel level = (ServerLevel) (Object) this;
-        if ((level.getGameTime() & 1L) != 0L) {
+        if (level.getGameTime() % SABLE_PATHFINDER$PATH_UPDATE_INTERVAL_TICKS != 0L) {
             return;
         }
 
-        final Set<Integer> renderedIds = new HashSet<>();
-
         for (final ServerPlayer player : level.players()) {
-            final AABB area = player.getBoundingBox().inflate(96.0);
+            final AABB area = player.getBoundingBox().inflate(SABLE_PATHFINDER$VIEW_DISTANCE);
             final var mobs = level.getEntitiesOfClass(Mob.class, area, mob -> mob.isAlive() && mob.getNavigation().getPath() != null && !mob.getNavigation().isDone());
 
+            int sentPaths = 0;
             for (final Mob mob : mobs) {
-                if (!renderedIds.add(mob.getId())) {
-                    continue;
-                }
-
                 final Path path = mob.getNavigation().getPath();
                 if (path == null || path.getNodeCount() < 1) {
                     continue;
                 }
 
-                final DustParticleOptions particle = this.sablePathfinder$getParticleForMob(mob);
-                Vec3 previous = mob.position().add(0.0, 0.15, 0.0);
-                final int maxNodes = Math.min(path.getNodeCount(), 64);
+                final List<BlockPos> nodes = this.sablePathfinder$getVisiblePathNodes(path);
+                if (nodes.isEmpty()) {
+                    continue;
+                }
 
-                for (int i = path.getNextNodeIndex(); i < maxNodes; i++) {
-                    final BlockPos nodePos = path.getNode(i).asBlockPos();
-                    final Vec3 current = Vec3.atCenterOf(nodePos).add(0.0, 0.05, 0.0);
-                    this.sablePathfinder$drawSegment(level, previous, current, particle);
-                    previous = current;
+                PacketDistributor.sendToPlayer(player, new PathGizmoPayload(mob.getId(), this.sablePathfinder$getColorForMob(mob), nodes));
+                if (!sablePathfinder$loggedFirstPathSend) {
+                    sablePathfinder$loggedFirstPathSend = true;
+                    SablePathfinder.LOGGER.info("Sent path gizmo payload for {} to {} with {} nodes.", mob.getName().getString(), player.getName().getString(), nodes.size());
+                }
+                if (++sentPaths >= SABLE_PATHFINDER$MAX_PATHS_PER_PLAYER) {
+                    break;
                 }
             }
         }
     }
 
-    private DustParticleOptions sablePathfinder$getParticleForMob(final Mob mob) {
+    private int sablePathfinder$getColorForMob(final Mob mob) {
         final int hash = mob.getUUID().hashCode();
         final float hue = (hash & 0xFFFFFF) / (float) 0xFFFFFF;
-        final int rgb = Mth.hsvToRgb(hue, 0.9f, 1.0f);
-        final float r = ((rgb >> 16) & 0xFF) / 255.0f;
-        final float g = ((rgb >> 8) & 0xFF) / 255.0f;
-        final float b = (rgb & 0xFF) / 255.0f;
-        return new DustParticleOptions(new Vector3f(r, g, b), 0.85f);
+        return Mth.hsvToRgb(hue, 0.9f, 1.0f);
     }
 
-    private void sablePathfinder$drawSegment(final ServerLevel level, final Vec3 start, final Vec3 end, final DustParticleOptions particle) {
-        final Vec3 delta = end.subtract(start);
-        final double length = delta.length();
-        if (length < 0.001) {
-            return;
+    private List<BlockPos> sablePathfinder$getVisiblePathNodes(final Path path) {
+        final int startNode = path.getNextNodeIndex();
+        final int endNode = Math.min(path.getNodeCount(), startNode + PathGizmoPayload.MAX_NODES);
+        final List<BlockPos> nodes = new ArrayList<>(Math.max(0, endNode - startNode));
+        for (int i = startNode; i < endNode; i++) {
+            nodes.add(path.getNode(i).asBlockPos());
         }
-
-        final int steps = Math.max(2, Math.min(24, (int) (length * 4.0)));
-        final Vec3 step = delta.scale(1.0 / steps);
-        Vec3 pos = start;
-        for (int i = 0; i <= steps; i++) {
-            level.sendParticles(particle, pos.x, pos.y, pos.z, 1, 0.0, 0.0, 0.0, 0.0);
-            pos = pos.add(step);
-        }
+        return nodes;
     }
 }

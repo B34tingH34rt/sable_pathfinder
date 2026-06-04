@@ -11,6 +11,7 @@
     "entity_pathfinding.PathFinderSegmentedMixin",
     "entity_pathfinding.PathNavigationRegionMixin",
     "entity_pathfinding.PathfindingContextCacheMixin",
+    "entity_pathfinding.PathNavigationSegmentedRecomputeMixin",
     "entity_pathfinding.PathSegmentedMixin",
     "entity_pathfinding.ServerLevelPathVisualizationMixin"
   ],

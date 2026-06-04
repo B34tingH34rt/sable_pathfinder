@@ -1,11 +1,13 @@
 package b34tingh34rt.sable_pathfinder.path;
 
 import dev.ryanhcode.sable.sublevel.SubLevel;
+import dev.ryanhcode.sable.Sable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.pathfinder.Node;
 import net.minecraft.world.level.pathfinder.Path;
+import net.minecraft.world.phys.Vec3;
 
 import javax.annotation.Nullable;
 import java.util.ArrayDeque;
@@ -15,6 +17,8 @@ import java.util.List;
 import java.util.Map;
 
 public final class PathProjectionContext {
+    private static final double MAX_PROJECTED_CAPTURE_DISTANCE_SQR = 16.0D * 16.0D;
+
     private static final ThreadLocal<ArrayDeque<State>> ACTIVE = ThreadLocal.withInitial(ArrayDeque::new);
 
     private PathProjectionContext() {
@@ -40,12 +44,16 @@ public final class PathProjectionContext {
             return;
         }
 
-        state.resolvedBlocks.putIfAbsent(worldQueryPos.immutable(), SegmentPoint.subLevel(worldQueryPos.immutable(), subLevel, localPos.immutable()));
+        state.recordResolvedBlock(worldQueryPos, subLevel, localPos);
     }
 
     public static void attachToPath(final Path path) {
         final State state = current();
         if (state == null || path == null || path.getNodeCount() < 2 || state.resolvedBlocks.isEmpty()) {
+            return;
+        }
+
+        if (state.pathUsesSubLevelStorageCoordinates(path)) {
             return;
         }
 
@@ -87,6 +95,38 @@ public final class PathProjectionContext {
             final BlockPos fromWorldPos = fromNode.asBlockPos();
             final BlockPos toWorldPos = toNode.asBlockPos();
             return new SegmentEdge(this.resolveNodeSurface(fromWorldPos), this.resolveNodeSurface(toWorldPos));
+        }
+
+        private void recordResolvedBlock(final BlockPos worldQueryPos, final SubLevel subLevel, final BlockPos localPos) {
+            if (this.isSubLevelStoragePosition(worldQueryPos)) {
+                return;
+            }
+
+            final SegmentPoint point = SegmentPoint.subLevel(worldQueryPos.immutable(), subLevel, localPos.immutable());
+            if (!this.projectsNearWorldQuery(point, worldQueryPos)) {
+                return;
+            }
+
+            this.resolvedBlocks.putIfAbsent(worldQueryPos.immutable(), point);
+        }
+
+        private boolean pathUsesSubLevelStorageCoordinates(final Path path) {
+            for (int i = 0; i < path.getNodeCount(); i++) {
+                if (this.isSubLevelStoragePosition(path.getNode(i).asBlockPos())) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private boolean isSubLevelStoragePosition(final BlockPos pos) {
+            return Sable.HELPER.getContaining(this.level, pos) != null;
+        }
+
+        private boolean projectsNearWorldQuery(final SegmentPoint point, final BlockPos worldQueryPos) {
+            final Vec3 projectedCenter = point.nodeCenter();
+            return projectedCenter.distanceToSqr(worldQueryPos.getCenter()) <= MAX_PROJECTED_CAPTURE_DISTANCE_SQR;
         }
 
         private SegmentPoint resolveNodeSurface(final BlockPos nodeWorldPos) {

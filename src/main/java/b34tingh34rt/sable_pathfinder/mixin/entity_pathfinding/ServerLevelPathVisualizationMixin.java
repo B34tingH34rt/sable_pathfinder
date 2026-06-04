@@ -2,6 +2,10 @@ package b34tingh34rt.sable_pathfinder.mixin.entity_pathfinding;
 
 import b34tingh34rt.sable_pathfinder.SablePathfinder;
 import b34tingh34rt.sable_pathfinder.network.PathGizmoPayload;
+import b34tingh34rt.sable_pathfinder.path.SegmentEdge;
+import b34tingh34rt.sable_pathfinder.path.SegmentPoint;
+import b34tingh34rt.sable_pathfinder.path.SegmentedPathAccess;
+import b34tingh34rt.sable_pathfinder.path.SegmentedPathData;
 import b34tingh34rt.sable_pathfinder.visualization.PathVisualizationState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -49,15 +53,15 @@ public abstract class ServerLevelPathVisualizationMixin {
                     continue;
                 }
 
-                final List<BlockPos> nodes = this.sablePathfinder$getVisiblePathNodes(path);
-                if (nodes.isEmpty()) {
+                final List<PathGizmoPayload.Segment> segments = this.sablePathfinder$getVisiblePathSegments(path);
+                if (segments.isEmpty()) {
                     continue;
                 }
 
-                PacketDistributor.sendToPlayer(player, new PathGizmoPayload(mob.getId(), this.sablePathfinder$getColorForMob(mob), nodes));
+                PacketDistributor.sendToPlayer(player, new PathGizmoPayload(mob.getId(), this.sablePathfinder$getColorForMob(mob), segments));
                 if (!sablePathfinder$loggedFirstPathSend) {
                     sablePathfinder$loggedFirstPathSend = true;
-                    SablePathfinder.LOGGER.info("Sent path gizmo payload for {} to {} with {} nodes.", mob.getName().getString(), player.getName().getString(), nodes.size());
+                    SablePathfinder.LOGGER.info("Sent path gizmo payload for {} to {} with {} segments.", mob.getName().getString(), player.getName().getString(), segments.size());
                 }
                 if (++sentPaths >= SABLE_PATHFINDER$MAX_PATHS_PER_PLAYER) {
                     break;
@@ -72,13 +76,31 @@ public abstract class ServerLevelPathVisualizationMixin {
         return Mth.hsvToRgb(hue, 0.9f, 1.0f);
     }
 
-    private List<BlockPos> sablePathfinder$getVisiblePathNodes(final Path path) {
-        final int startNode = path.getNextNodeIndex();
-        final int endNode = Math.min(path.getNodeCount(), startNode + PathGizmoPayload.MAX_NODES);
-        final List<BlockPos> nodes = new ArrayList<>(Math.max(0, endNode - startNode));
-        for (int i = startNode; i < endNode; i++) {
-            nodes.add(path.getNode(i).asBlockPos());
+    private List<PathGizmoPayload.Segment> sablePathfinder$getVisiblePathSegments(final Path path) {
+        final SegmentedPathData segmentedPathData = ((SegmentedPathAccess) path).sablePathfinder$getSegmentedPathData();
+        if (segmentedPathData != null && !segmentedPathData.isEmpty()) {
+            final List<SegmentEdge> edges = segmentedPathData.visibleEdges(path, PathGizmoPayload.MAX_SEGMENTS);
+            final List<PathGizmoPayload.Segment> segments = new ArrayList<>(edges.size());
+            for (final SegmentEdge edge : edges) {
+                segments.add(new PathGizmoPayload.Segment(this.sablePathfinder$toPayloadPoint(edge.from()), this.sablePathfinder$toPayloadPoint(edge.to())));
+            }
+            return segments;
         }
-        return nodes;
+
+        final int startNode = path.getNextNodeIndex();
+        final int endNode = Math.min(path.getNodeCount() - 1, startNode + PathGizmoPayload.MAX_SEGMENTS);
+        final List<PathGizmoPayload.Segment> segments = new ArrayList<>(Math.max(0, endNode - startNode));
+        for (int i = startNode; i < endNode; i++) {
+            segments.add(new PathGizmoPayload.Segment(PathGizmoPayload.Point.world(path.getNodePos(i)), PathGizmoPayload.Point.world(path.getNodePos(i + 1))));
+        }
+        return segments;
+    }
+
+    private PathGizmoPayload.Point sablePathfinder$toPayloadPoint(final SegmentPoint point) {
+        if (!point.usesSubLevel() || point.subLevelId() == null || point.localPos() == null) {
+            return PathGizmoPayload.Point.world(point.worldPos());
+        }
+
+        return new PathGizmoPayload.Point(point.worldPos(), point.subLevelId(), point.localPos());
     }
 }

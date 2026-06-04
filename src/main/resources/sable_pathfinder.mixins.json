@@ -8,8 +8,10 @@
     "entity_pathfinding.GroundPathNavigationTargetMixin",
     "entity_pathfinding.PathNavigationMobAccessor",
     "entity_pathfinding.PathNavigationTargetMixin",
+    "entity_pathfinding.PathFinderSegmentedMixin",
     "entity_pathfinding.PathNavigationRegionMixin",
     "entity_pathfinding.PathfindingContextCacheMixin",
+    "entity_pathfinding.PathSegmentedMixin",
     "entity_pathfinding.ServerLevelPathVisualizationMixin"
   ],
   "injectors": {

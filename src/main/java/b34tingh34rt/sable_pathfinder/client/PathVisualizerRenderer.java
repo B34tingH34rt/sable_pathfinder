@@ -1,11 +1,13 @@
 package b34tingh34rt.sable_pathfinder.client;
 
 import b34tingh34rt.sable_pathfinder.SablePathfinder;
+import b34tingh34rt.sable_pathfinder.network.PathGizmoPayload;
 import b34tingh34rt.sable_pathfinder.visualization.PathGizmoState;
 import b34tingh34rt.sable_pathfinder.visualization.PathVisualizationState;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import dev.ryanhcode.sable.Sable;
+import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
+import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -21,6 +23,7 @@ import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import org.joml.Quaternionf;
 
 import java.util.Collection;
+import java.util.UUID;
 
 @EventBusSubscriber(modid = SablePathfinder.MODID, value = Dist.CLIENT)
 public final class PathVisualizerRenderer {
@@ -74,7 +77,7 @@ public final class PathVisualizerRenderer {
     ) {
         int renderedMarkers = 0;
         for (final PathGizmoState.Entry entry : gizmoEntries) {
-            if (entry.nodes().isEmpty()) {
+            if (entry.segments().isEmpty()) {
                 continue;
             }
 
@@ -85,16 +88,23 @@ public final class PathVisualizerRenderer {
             final float greenFloat = green / 255.0F;
             final float blueFloat = blue / 255.0F;
 
-            sablePathfinder$renderPathLines(event, bufferSource, entry.nodes(), red, green, blue);
+            sablePathfinder$renderPathLines(event, bufferSource, entry.segments(), red, green, blue);
 
-            for (int i = 0; i < entry.nodes().size(); i++) {
+            for (int i = 0; i < entry.segments().size(); i++) {
                 if (renderedMarkers >= SABLE_PATHFINDER$MAX_GIZMO_NODE_MARKERS) {
                     return;
                 }
 
-                final BlockPos node = entry.nodes().get(i);
+                final PathGizmoPayload.Segment segment = entry.segments().get(i);
                 final float alpha = i == 0 ? 0.85F : 0.55F;
-                sablePathfinder$renderNodeMarker(event, bufferSource, node, redFloat, greenFloat, blueFloat, alpha);
+                if (i == 0) {
+                    sablePathfinder$renderNodeMarker(event, bufferSource, segment.from(), redFloat, greenFloat, blueFloat, alpha);
+                    renderedMarkers++;
+                }
+                if (renderedMarkers >= SABLE_PATHFINDER$MAX_GIZMO_NODE_MARKERS) {
+                    return;
+                }
+                sablePathfinder$renderNodeMarker(event, bufferSource, segment.to(), redFloat, greenFloat, blueFloat, 0.55F);
                 renderedMarkers++;
             }
         }
@@ -103,12 +113,12 @@ public final class PathVisualizerRenderer {
     private static void sablePathfinder$renderPathLines(
             final RenderLevelStageEvent event,
             final MultiBufferSource bufferSource,
-            final java.util.List<BlockPos> nodes,
+            final java.util.List<PathGizmoPayload.Segment> segments,
             final int red,
             final int green,
             final int blue
     ) {
-        if (nodes.size() < 2) {
+        if (segments.isEmpty()) {
             return;
         }
 
@@ -118,21 +128,22 @@ public final class PathVisualizerRenderer {
         }
 
         final Vec3 cameraPosition = camera.getPosition();
-        final VertexConsumer lineConsumer = bufferSource.getBuffer(RenderType.debugLineStrip(SABLE_PATHFINDER$LINE_WIDTH));
-        for (final BlockPos node : nodes) {
-            final Vec3 point = sablePathfinder$projectNodeCenter(node, cameraPosition);
-            lineConsumer.addVertex(event.getPoseStack().last(), (float) point.x, (float) point.y, (float) point.z).setColor(red, green, blue, 220);
-        }
-
-        if (bufferSource instanceof MultiBufferSource.BufferSource immediate) {
-            immediate.endBatch(RenderType.debugLineStrip(SABLE_PATHFINDER$LINE_WIDTH));
+        for (final PathGizmoPayload.Segment segment : segments) {
+            final VertexConsumer lineConsumer = bufferSource.getBuffer(RenderType.debugLineStrip(SABLE_PATHFINDER$LINE_WIDTH));
+            final Vec3 from = sablePathfinder$resolvePoint(segment.from(), cameraPosition).center();
+            final Vec3 to = sablePathfinder$resolvePoint(segment.to(), cameraPosition).center();
+            lineConsumer.addVertex(event.getPoseStack().last(), (float) from.x, (float) from.y, (float) from.z).setColor(red, green, blue, 220);
+            lineConsumer.addVertex(event.getPoseStack().last(), (float) to.x, (float) to.y, (float) to.z).setColor(red, green, blue, 220);
+            if (bufferSource instanceof MultiBufferSource.BufferSource immediate) {
+                immediate.endBatch(RenderType.debugLineStrip(SABLE_PATHFINDER$LINE_WIDTH));
+            }
         }
     }
 
     private static void sablePathfinder$renderNodeMarker(
             final RenderLevelStageEvent event,
             final MultiBufferSource bufferSource,
-            final BlockPos node,
+            final PathGizmoPayload.Point point,
             final float red,
             final float green,
             final float blue,
@@ -145,29 +156,40 @@ public final class PathVisualizerRenderer {
 
         final double halfSize = SABLE_PATHFINDER$NODE_MARKER_SIZE * 0.5;
         final AABB markerBox = new AABB(-halfSize, -halfSize, -halfSize, halfSize, halfSize, halfSize);
-        final ClientSubLevel subLevel = Sable.HELPER.getContainingClient(node);
+        final ResolvedPoint resolvedPoint = sablePathfinder$resolvePoint(point, camera.getPosition());
 
-        if (subLevel == null) {
-            final Vec3 center = node.getCenter().subtract(camera.getPosition());
-            DebugRenderer.renderFilledBox(event.getPoseStack(), bufferSource, markerBox.move(center), red, green, blue, alpha);
+        if (resolvedPoint.subLevel() == null) {
+            DebugRenderer.renderFilledBox(event.getPoseStack(), bufferSource, markerBox.move(resolvedPoint.center()), red, green, blue, alpha);
             return;
         }
 
-        final var pose = subLevel.renderPose();
-        final Vec3 center = pose.transformPosition(node.getCenter()).subtract(camera.getPosition());
+        final var pose = resolvedPoint.subLevel().renderPose();
         event.getPoseStack().pushPose();
-        event.getPoseStack().translate(center.x, center.y, center.z);
+        event.getPoseStack().translate(resolvedPoint.center().x, resolvedPoint.center().y, resolvedPoint.center().z);
         event.getPoseStack().mulPose(new Quaternionf(pose.orientation()));
         DebugRenderer.renderFilledBox(event.getPoseStack(), bufferSource, markerBox, red, green, blue, alpha);
         event.getPoseStack().popPose();
     }
 
-    private static Vec3 sablePathfinder$projectNodeCenter(final BlockPos node, final Vec3 cameraPosition) {
-        final ClientSubLevel subLevel = Sable.HELPER.getContainingClient(node);
-        if (subLevel == null) {
-            return node.getCenter().subtract(cameraPosition);
+    private static ResolvedPoint sablePathfinder$resolvePoint(final PathGizmoPayload.Point point, final Vec3 cameraPosition) {
+        final ClientSubLevel subLevel = point.usesSubLevel() ? sablePathfinder$getClientSubLevel(point.subLevelId()) : null;
+        if (subLevel == null || point.localPos() == null) {
+            return new ResolvedPoint(point.worldPos().getCenter().subtract(cameraPosition), null);
         }
 
-        return subLevel.renderPose().transformPosition(node.getCenter()).subtract(cameraPosition);
+        return new ResolvedPoint(subLevel.renderPose().transformPosition(point.localPos().getCenter()).subtract(cameraPosition), subLevel);
+    }
+
+    private static ClientSubLevel sablePathfinder$getClientSubLevel(final UUID subLevelId) {
+        final Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.level == null) {
+            return null;
+        }
+
+        final SubLevel subLevel = SubLevelContainer.getContainer(minecraft.level).getSubLevel(subLevelId);
+        return subLevel instanceof ClientSubLevel clientSubLevel ? clientSubLevel : null;
+    }
+
+    private record ResolvedPoint(Vec3 center, ClientSubLevel subLevel) {
     }
 }

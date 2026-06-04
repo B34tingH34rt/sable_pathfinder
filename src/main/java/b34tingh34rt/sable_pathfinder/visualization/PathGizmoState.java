@@ -19,15 +19,15 @@ public final class PathGizmoState {
     }
 
     public static void accept(final PathGizmoPayload payload) {
-        if (payload.nodes().isEmpty()) {
+        if (payload.segments().isEmpty()) {
             ENTRIES.remove(payload.entityId());
             return;
         }
 
-        ENTRIES.put(payload.entityId(), new Entry(payload.entityId(), payload.rgb(), payload.nodes(), Util.getMillis()));
+        ENTRIES.put(payload.entityId(), new Entry(payload.entityId(), payload.rgb(), payload.segments(), Util.getMillis()));
         if (!loggedFirstPayload) {
             loggedFirstPayload = true;
-            SablePathfinder.LOGGER.info("Received path gizmo payload for entity {} with {} nodes.", payload.entityId(), payload.nodes().size());
+            SablePathfinder.LOGGER.info("Received path gizmo payload for entity {} with {} segments.", payload.entityId(), payload.segments().size());
         }
     }
 
@@ -37,6 +37,6 @@ public final class PathGizmoState {
         return List.copyOf(ENTRIES.values());
     }
 
-    public record Entry(int entityId, int rgb, List<BlockPos> nodes, long updatedAtMillis) {
+    public record Entry(int entityId, int rgb, List<PathGizmoPayload.Segment> segments, long updatedAtMillis) {
     }
 }

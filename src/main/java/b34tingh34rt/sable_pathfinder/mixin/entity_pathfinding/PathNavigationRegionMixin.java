@@ -1,5 +1,6 @@
 package b34tingh34rt.sable_pathfinder.mixin.entity_pathfinding;
 
+import b34tingh34rt.sable_pathfinder.path.PathProjectionContext;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
@@ -33,6 +34,9 @@ public abstract class PathNavigationRegionMixin {
         final BlockState resolved = Sable.HELPER.runIncludingSubLevels(this.level, Vec3.atCenterOf(blockPos), false, localSubLevel,
                 (candidateSubLevel, candidatePos) -> {
                     final BlockState candidateState = this.level.getBlockState(candidatePos);
+                    if (!candidateState.isAir()) {
+                        PathProjectionContext.recordResolvedBlock(blockPos, candidateSubLevel, candidatePos);
+                    }
                     return candidateState.isAir() ? null : candidateState;
                 });
 
@@ -53,6 +57,9 @@ public abstract class PathNavigationRegionMixin {
         final FluidState resolved = Sable.HELPER.runIncludingSubLevels(this.level, Vec3.atCenterOf(blockPos), false, localSubLevel,
                 (candidateSubLevel, candidatePos) -> {
                     final FluidState candidateState = this.level.getFluidState(candidatePos);
+                    if (!candidateState.isEmpty()) {
+                        PathProjectionContext.recordResolvedBlock(blockPos, candidateSubLevel, candidatePos);
+                    }
                     return candidateState.isEmpty() ? null : candidateState;
                 });
 
